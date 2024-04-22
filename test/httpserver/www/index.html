@@ -37,8 +37,12 @@
 
         </video>
         <p>
-            URL : <input type="text" id="edtURL" value="rtsp://admincctv:admin123@192.168.0.101/stream1"/>
+            <!-- URL : <input type="text" id="edtURL" value="rtsp://admincctv:admin123@192.168.0.101/stream1"/> -->
+            URL : <input type="text" id="edtURL" value="rtsp://localhost:8554/as"/>
             <button type="button" onclick="openStream()">Open</button>
+        </p>
+        <p>
+            <button type="button" onclick="getPL()">Get Playlist</button>
         </p>
     </body>
 </html>

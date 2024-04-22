@@ -1,12 +1,9 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
-	"os"
 
+	"github.com/gofiber/fiber/v2"
 	rtsp2hls "github.com/kodernubie/rtsp2hls"
 )
 
@@ -20,87 +17,60 @@ type Result struct {
 	Data    interface{} `json:"data"`
 }
 
-func sendError(w http.ResponseWriter, msg string) {
+func sendError(c *fiber.Ctx, msg string) error {
 
-	payload, _ := json.Marshal(Result{
+	return c.JSON(Result{
 		Code:    http.StatusBadRequest,
 		Message: msg,
 	})
-
-	w.WriteHeader(http.StatusBadRequest)
-	w.Write(payload)
 }
 
-func sendResult(w http.ResponseWriter, data interface{}) {
+func sendResult(c *fiber.Ctx, data interface{}) error {
 
-	payload, _ := json.Marshal(Result{
+	return c.JSON(Result{
 		Code:    http.StatusOK,
 		Message: "success",
 		Data:    data,
 	})
-
-	w.Write(payload)
 }
 
 func main() {
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/index.html", func(w http.ResponseWriter, r *http.Request) {
+	app := fiber.New()
 
-		content, _ := os.ReadFile("./index.html")
-		w.Write(content)
-	})
+	app.Static("/", "./www")
 
-	mux.HandleFunc("GET /stream/{id}", func(w http.ResponseWriter, r *http.Request) {
+	app.Post("/stream", openStream)
+	app.Get("/stream/:id/index.m3u8", getPlaylist)
 
-		id := r.PathValue("id")
+	app.Listen(":3000")
+}
 
-		fmt.Println("ID : ", id)
-		sendResult(w, "OK "+id)
-	})
+func openStream(c *fiber.Ctx) error {
 
-	// open new stream, payload :
-	// {
-	// 	"url" : "rstp://user:pass@address/[nameofstream]"
-	// }
-	mux.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
+	req := OpenReq{}
+	err := c.BodyParser(&req)
 
-		if r.Method == "POST" {
+	if err != nil {
+		return sendError(c, "invalid request "+err.Error())
+	}
 
-			payload, err := io.ReadAll(r.Body)
+	stream, err := rtsp2hls.Open(req.URL)
 
-			if err != nil {
-				fmt.Println("error 1 :", err)
-				sendError(w, err.Error())
-				return
-			}
+	if err != nil {
+		return sendError(c, "stream open error "+err.Error())
+	}
 
-			fmt.Println("req payload :", string(payload))
+	return sendResult(c, stream.ID)
+}
 
-			req := OpenReq{}
-			err = json.Unmarshal(payload, &req)
+func getPlaylist(c *fiber.Ctx) error {
 
-			if err != nil {
-				fmt.Println("error 2 :", err)
-				sendError(w, err.Error())
-				return
-			}
+	stream := rtsp2hls.Get(c.Params("id"))
 
-			stream, err := rtsp2hls.Open(req.URL)
+	if stream == nil {
 
-			if err != nil {
-				fmt.Println("error 3 :", err)
-				sendError(w, err.Error())
-				return
-			}
-
-			sendResult(w, stream.ID)
-		} else {
-			sendError(w, "Not supported")
-			return
-		}
-	})
-
-	fmt.Println("Server started at 8090")
-	http.ListenAndServe(":8090", nil)
+		return c.SendStatus(404)
+	}
+	return c.SendString(stream.PlayList("http://localhost:3000/"))
 }
