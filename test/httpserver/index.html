@@ -1,0 +1,44 @@
+<html>
+    <head>
+        <title>RTP2HLS Example</title>
+        <script>
+            var id = undefined
+
+            function openStream() {
+
+                fetch("/stream", {
+                    method : "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body : JSON.stringify({
+                        "url" : document.getElementById("edtURL").value
+                    })
+                }).then((response) => {
+                    return response.json()
+                }).then((obj) => {
+                    console.log(obj)
+                    id = obj.data  
+                })
+            }
+
+            function getPL() {
+                fetch("/stream", {
+                }).then((response) => {
+                    return response.json()
+                }).then((data) => {
+                    console.log(data)
+                })
+            }
+        </script>
+    </head>
+    <body>
+        <video>
+
+        </video>
+        <p>
+            URL : <input type="text" id="edtURL" value="rtsp://admincctv:admin123@192.168.0.101/stream1"/>
+            <button type="button" onclick="openStream()">Open</button>
+        </p>
+    </body>
+</html>
