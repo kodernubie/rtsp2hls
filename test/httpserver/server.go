@@ -13,8 +13,13 @@ type OpenReq struct {
 	URL string `json:"url"`
 }
 
+type OpenRes struct {
+	ID  string `json:"id"`
+	URL string `json:"url"`
+}
+
 type Result struct {
-	Code    int         `json:"url"`
+	Code    int         `json:"code"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data"`
 }
@@ -64,7 +69,12 @@ func openStream(c *fiber.Ctx) error {
 		return sendError(c, "stream open error "+err.Error())
 	}
 
-	return sendResult(c, stream.ID)
+	url := string(c.Request().URI().FullURI()) + "/" + stream.ID + "/index.m3u8"
+
+	return sendResult(c, OpenRes{
+		ID:  stream.ID,
+		URL: url,
+	})
 }
 
 func getPlaylist(c *fiber.Ctx) error {
@@ -94,7 +104,6 @@ func getMedia(c *fiber.Ctx) error {
 	mediaId := c.Params("mediaId")
 	mediaId = mediaId[0 : len(mediaId)-3]
 
-	fmt.Println("====>", stream.ID, "===>", mediaId)
 	byt, err := stream.Segment(mediaId)
 
 	if err != nil {

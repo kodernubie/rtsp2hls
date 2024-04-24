@@ -17,32 +17,44 @@
                 }).then((response) => {
                     return response.json()
                 }).then((obj) => {
+                    
                     console.log(obj)
-                    id = obj.data  
-                })
-            }
+                    if (obj != undefined && obj.data != undefined && obj.data.url != undefined) {
 
-            function getPL() {
-                fetch("/stream", {
-                }).then((response) => {
-                    return response.json()
-                }).then((data) => {
-                    console.log(data)
+                        hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
+                            console.log(
+                                'manifest loaded, found ' + data.levels.length + ' quality level',
+                            );
+
+                            var video = document.getElementById('video');
+                            video.muted = true;
+                            video.play();
+                        });
+                        hls.loadSource(obj.data.url);
+                    }  
                 })
             }
         </script>
     </head>
     <body>
-        <video>
+        <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+        <video id="video"></video>
 
-        </video>
+        <script>
+            if (Hls.isSupported()) {
+                var video = document.getElementById('video');
+                var hls = new Hls();
+                hls.on(Hls.Events.MEDIA_ATTACHED, function () {
+                    console.log('video and hls.js are now bound together !');
+                });
+                hls.attachMedia(video);
+            }
+        </script>
+
         <p>
             <!-- URL : <input type="text" id="edtURL" value="rtsp://admincctv:admin123@192.168.0.101/stream1"/> -->
-            URL : <input type="text" id="edtURL" value="rtsp://localhost:8554/as"/>
+            URL : <input type="text" id="edtURL" value="rtsp://admincctv:admin123@192.168.85.122/stream1"/>
             <button type="button" onclick="openStream()">Open</button>
-        </p>
-        <p>
-            <button type="button" onclick="getPL()">Get Playlist</button>
         </p>
     </body>
 </html>

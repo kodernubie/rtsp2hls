@@ -50,7 +50,7 @@ type Segment struct {
 	data []*av.Packet
 }
 
-func (o *Stream) addHLS(val []*av.Packet, dur time.Duration) {
+func (o *Stream) addSegment(val []*av.Packet, dur time.Duration) {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
 
@@ -114,7 +114,7 @@ func (o *Stream) loop() {
 				// log.Println("keyframe")
 				keyTest.Reset(20 * time.Second)
 				if preKeyTS > 0 {
-					o.addHLS(Seq, packetAV.Time-preKeyTS)
+					o.addSegment(Seq, packetAV.Time-preKeyTS)
 					Seq = []*av.Packet{}
 				}
 				preKeyTS = packetAV.Time
@@ -130,7 +130,7 @@ func (o *Stream) start() error {
 	o.hlsSegmentBuffer = map[int]Segment{}
 
 	var err error
-	o.client, err = rtspv2.Dial(rtspv2.RTSPClientOptions{URL: o.URL, DisableAudio: true, DialTimeout: 3 * time.Second, ReadWriteTimeout: 3 * time.Second, Debug: true})
+	o.client, err = rtspv2.Dial(rtspv2.RTSPClientOptions{URL: o.URL, DisableAudio: true, DialTimeout: 3 * time.Second, ReadWriteTimeout: 3 * time.Second, Debug: false})
 
 	if err != nil {
 		o.LastError = err
@@ -197,7 +197,7 @@ func (o *Stream) Stop() error {
 func (o *Stream) PlayList(baseURL string) string {
 
 	timeCount := 0
-	for len(o.hlsSegmentBuffer) < 1 {
+	for len(o.hlsSegmentBuffer) < 6 {
 
 		timeCount++
 
