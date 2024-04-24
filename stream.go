@@ -74,6 +74,12 @@ func (o *Stream) loop() {
 
 	defer func() {
 
+		r := recover()
+
+		if r != nil {
+			log.Println("recover from panic :", r)
+		}
+
 		if o.client != nil {
 			o.State = STOPPED
 			o.client.Close()
@@ -190,7 +196,16 @@ func (o *Stream) Stop() error {
 	return nil
 }
 
-func (o *Stream) PlayList(baseURL string) string {
+func (o *Stream) PlayList(baseURL string) (ret string) {
+
+	defer func() {
+
+		r := recover()
+
+		if r != nil {
+			ret = ""
+		}
+	}()
 
 	timeCount := 0
 	for len(o.hlsSegmentBuffer) < MAX_BUFFER {
