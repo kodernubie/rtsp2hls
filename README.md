@@ -23,7 +23,7 @@ To open rtsp stream, use following code :
 
     if err == nil {
         
-        fmt.println("Success opening stream with id :", stream.id)
+        fmt.println("Success opening stream with id :", stream.ID)
     }
 
 ```
