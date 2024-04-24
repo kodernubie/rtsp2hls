@@ -3,6 +3,7 @@ package rstp2hls
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log"
 	"sort"
 	"strconv"
@@ -151,15 +152,16 @@ func (o *Stream) start() error {
 			log.Println("Reconnect :", o.ID, ", try ", numtry)
 			var err error = nil
 
-			for err == nil && numtry < 20 {
+			for numtry < 20 {
 
+				time.Sleep(time.Second)
 				err = o.start()
 
-				if err != nil {
-
-					numtry++
-					time.Sleep(time.Second)
+				if err == nil {
+					break
 				}
+
+				numtry++
 			}
 
 			if err != nil && o.OnEvent != nil {
@@ -188,20 +190,14 @@ func (o *Stream) Stop() error {
 	return nil
 }
 
-// segement can be acessed by :
-// [baseURL]/[segmentno].ts
-// example for base url "media/stream1/" the segment file will be
-// media/stream1/1.ts
-// media/stream1/2.ts
-// media/stream1/3.ts
 func (o *Stream) PlayList(baseURL string) string {
 
 	timeCount := 0
-	for len(o.hlsSegmentBuffer) < 6 {
+	for len(o.hlsSegmentBuffer) < MAX_BUFFER {
 
 		timeCount++
 
-		if timeCount > 10 {
+		if timeCount > 12 {
 			break
 		}
 
@@ -230,16 +226,25 @@ func (o *Stream) PlayList(baseURL string) string {
 		out += `#EXTINF:` + strconv.FormatFloat(o.hlsSegmentBuffer[i].dur.Seconds(), 'f', 1, 64) + `,
 ` + baseURL + strconv.Itoa(i) + `.ts
 `
-
 	}
 
 	return out
 }
 
-func (o *Stream) Segment(id string) ([]byte, error) {
+func (o *Stream) Segment(id string) (ret []byte, retErr error) {
 
-	ret := bytes.NewBuffer([]byte{})
-	Muxer := ts.NewMuxer(ret)
+	defer func() {
+
+		r := recover()
+
+		if r != nil {
+			ret = nil
+			retErr = fmt.Errorf("error : %s", r)
+		}
+	}()
+
+	retBuff := bytes.NewBuffer([]byte{})
+	Muxer := ts.NewMuxer(retBuff)
 	err := Muxer.WriteHeader(o.client.CodecData)
 	if err != nil {
 		log.Println(err)
@@ -273,7 +278,7 @@ func (o *Stream) Segment(id string) ([]byte, error) {
 		return nil, err
 	}
 
-	return ret.Bytes(), nil
+	return retBuff.Bytes(), nil
 }
 
 func stringToInt(val string) int {
