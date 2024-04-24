@@ -11,6 +11,11 @@ func Open(url string) (*Stream, error) {
 	var existing = GetByURL(url)
 
 	if existing != nil {
+
+		if existing.State == STOPPED {
+			existing.start()
+		}
+
 		return existing, nil
 	}
 

@@ -3,11 +3,9 @@ package rstp2hls
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"log"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +35,7 @@ type Stream struct {
 	URL              string
 	LastError        error
 	client           *rtspv2.RTSPClient
+	needReconnect    bool
 	State            string
 	hlsSegmentNumber int
 	hlsSegmentBuffer map[int]Segment
@@ -59,8 +58,7 @@ func (o *Stream) addHLS(val []*av.Packet, dur time.Duration) {
 	o.hlsSegmentBuffer[o.hlsSegmentNumber] = Segment{data: val, dur: dur}
 
 	if o.hasMax {
-		print("should have delete")
-		// delete(o.hlsSegmentBuffer, o.hlsSegmentNumber-MAX_BUFFER-1)
+		delete(o.hlsSegmentBuffer, o.hlsSegmentNumber-MAX_BUFFER-1)
 	} else {
 		o.hasMax = len(o.hlsSegmentBuffer) >= MAX_BUFFER
 	}
@@ -85,45 +83,35 @@ func (o *Stream) loop() {
 	var preKeyTS = time.Duration(0)
 	var Seq []*av.Packet
 
+	o.needReconnect = false
+
 	for {
 
 		select {
 		case <-o.stopChan:
-			fmt.Println("stop")
+			log.Println("stop")
 			o.State = STOPPED
-
-			if o.OnEvent != nil {
-				o.OnEvent(o, EVT_STOPPED)
-			}
 			return
 		case <-keyTest.C:
 			log.Println("Stream stopped because no video received", o.ID)
 			o.LastError = errors.New("Stream stopped because no video received")
 
 			o.State = STOPPED
-
-			if o.OnEvent != nil {
-				o.OnEvent(o, EVT_ERROR)
-			}
 			return
 		case signals := <-o.client.Signals:
-			fmt.Println("signal :", signals)
+			log.Println("signal :", signals)
 			switch signals {
 			case rtspv2.SignalCodecUpdate:
 				log.Println("codec update", o.ID)
 			case rtspv2.SignalStreamRTPStop:
 				log.Println("rtsp stopped", o.ID)
 
-				o.State = STOPPED
-
-				if o.OnEvent != nil {
-					o.OnEvent(o, EVT_STOPPED)
-				}
+				o.needReconnect = true
 				return
 			}
 		case packetAV := <-o.client.OutgoingPacketQueue:
 			if packetAV.IsKeyFrame {
-				fmt.Println("keyframe")
+				// log.Println("keyframe")
 				keyTest.Reset(20 * time.Second)
 				if preKeyTS > 0 {
 					o.addHLS(Seq, packetAV.Time-preKeyTS)
@@ -142,7 +130,7 @@ func (o *Stream) start() error {
 	o.hlsSegmentBuffer = map[int]Segment{}
 
 	var err error
-	o.client, err = rtspv2.Dial(rtspv2.RTSPClientOptions{URL: o.URL, DisableAudio: false, DialTimeout: 3 * time.Second, ReadWriteTimeout: 3 * time.Second, Debug: false})
+	o.client, err = rtspv2.Dial(rtspv2.RTSPClientOptions{URL: o.URL, DisableAudio: true, DialTimeout: 3 * time.Second, ReadWriteTimeout: 3 * time.Second, Debug: true})
 
 	if err != nil {
 		o.LastError = err
@@ -156,6 +144,34 @@ func (o *Stream) start() error {
 	go func() {
 		o.State = RUNNING
 		o.loop()
+
+		if o.needReconnect {
+			numtry := 1
+
+			log.Println("Reconnect :", o.ID, ", try ", numtry)
+			var err error = nil
+
+			for err == nil && numtry < 20 {
+
+				err = o.start()
+
+				if err != nil {
+
+					numtry++
+					time.Sleep(time.Second)
+				}
+			}
+
+			if err != nil && o.OnEvent != nil {
+				o.OnEvent(o, EVT_STOPPED)
+			}
+		} else {
+			o.State = STOPPED
+
+			if o.OnEvent != nil {
+				o.OnEvent(o, EVT_STOPPED)
+			}
+		}
 	}()
 
 	return nil
@@ -180,7 +196,6 @@ func (o *Stream) Stop() error {
 // media/stream1/3.ts
 func (o *Stream) PlayList(baseURL string) string {
 
-	fmt.Println("start Playlist")
 	timeCount := 0
 	for len(o.hlsSegmentBuffer) < 1 {
 
@@ -221,11 +236,7 @@ func (o *Stream) PlayList(baseURL string) string {
 	return out
 }
 
-func (o *Stream) Segment(segmentUrl string) ([]byte, error) {
-
-	pos := strings.LastIndex(segmentUrl, "/")
-	name := segmentUrl[pos+1:]
-	name = name[:len(name)-3]
+func (o *Stream) Segment(id string) ([]byte, error) {
 
 	ret := bytes.NewBuffer([]byte{})
 	Muxer := ts.NewMuxer(ret)
@@ -236,15 +247,15 @@ func (o *Stream) Segment(segmentUrl string) ([]byte, error) {
 	}
 
 	Muxer.PaddingToMakeCounterCont = true
-	seqData, exist := o.hlsSegmentBuffer[stringToInt(name)]
+	seqData, exist := o.hlsSegmentBuffer[stringToInt(id)]
 	if !exist {
-		log.Println("segement not exist :", name)
-		return nil, errors.New("segment not exist :" + name)
+		log.Println("segement not exist :", id)
+		return nil, errors.New("segment not exist :" + id)
 	}
 
 	if len(seqData.data) == 0 {
-		log.Println(err)
-		return nil, errors.New("empty segement" + name)
+		log.Println("empty segment " + id)
+		return nil, errors.New("empty segement" + id)
 	}
 
 	for _, v := range seqData.data {
@@ -255,6 +266,7 @@ func (o *Stream) Segment(segmentUrl string) ([]byte, error) {
 			return nil, err
 		}
 	}
+
 	err = Muxer.WriteTrailer()
 	if err != nil {
 		log.Println(err)

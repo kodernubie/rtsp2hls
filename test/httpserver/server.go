@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"net/http"
 
 	"github.com/gofiber/fiber/v2"
@@ -15,6 +17,19 @@ type Result struct {
 	Code    int         `json:"url"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data"`
+}
+
+func main() {
+
+	app := fiber.New()
+
+	app.Static("/", "./www")
+
+	app.Post("/stream", openStream)
+	app.Get("/stream/:id/index.m3u8", getPlaylist)
+	app.Get("/stream/:id/media/:mediaId", getMedia)
+
+	app.Listen(":3000")
 }
 
 func sendError(c *fiber.Ctx, msg string) error {
@@ -32,18 +47,6 @@ func sendResult(c *fiber.Ctx, data interface{}) error {
 		Message: "success",
 		Data:    data,
 	})
-}
-
-func main() {
-
-	app := fiber.New()
-
-	app.Static("/", "./www")
-
-	app.Post("/stream", openStream)
-	app.Get("/stream/:id/index.m3u8", getPlaylist)
-
-	app.Listen(":3000")
 }
 
 func openStream(c *fiber.Ctx) error {
@@ -72,5 +75,33 @@ func getPlaylist(c *fiber.Ctx) error {
 
 		return c.SendStatus(404)
 	}
-	return c.SendString(stream.PlayList("http://localhost:3000/"))
+
+	url := string(c.Request().URI().FullURI())
+	url = url[0 : len(url)-11]
+
+	c.Response().Header.Add("Content-Type", "application/x-mpegURL")
+	return c.SendString(stream.PlayList(url + "/media/"))
+}
+
+func getMedia(c *fiber.Ctx) error {
+
+	stream := rtsp2hls.Get(c.Params("id"))
+
+	if stream == nil {
+		return c.SendStatus(http.StatusNotFound)
+	}
+
+	mediaId := c.Params("mediaId")
+	mediaId = mediaId[0 : len(mediaId)-3]
+
+	fmt.Println("====>", stream.ID, "===>", mediaId)
+	byt, err := stream.Segment(mediaId)
+
+	if err != nil {
+		fmt.Println("Error :", err)
+		return c.SendStatus(http.StatusNotFound)
+	}
+
+	c.Response().Header.Add("Content-Type", "video/mp2t")
+	return c.SendStream(bytes.NewReader(byt))
 }
