@@ -11,6 +11,7 @@ Usage, first get the module using :
 go get github.com/kodernubie/rtsp2hls
 ```
 
+
 To open rtsp stream, use following code :
 
 ```
@@ -28,6 +29,7 @@ To open rtsp stream, use following code :
 ```
 
 
+
 To generate playlist file that can be used by video player, :
 
 ```
@@ -38,13 +40,16 @@ To generate playlist file that can be used by video player, :
     
     app := fiber.New()
 
+    // called by videoplayer : http://server.com/stream/[streamId]/index.m3u8
     app.Get("/stream/:streamId/index.m3u8", function(c *fiber.Context) {
 
         streamId := c.Param("streamId")
         stream := rtsp2hls.get(streamId)
 
+        c.Response().Header.Add("Content-Type", "application/x-mpegURL")
+
         // provide your custom base url for segment file
-        // example iif you provide base url : http://server.com/stream/[streamId]/segment/
+        // example if you provide base url : http://server.com/stream/[streamId]/segment/
         // then your media file will be :
         // http://server.com/stream/[streamId]/segment/1.ts
         // http://server.com/stream/[streamId]/segment/2.ts
@@ -53,3 +58,36 @@ To generate playlist file that can be used by video player, :
     })
 
 ```
+
+
+Then implement api that return segment file binary data :
+
+```
+    import (
+	    "github.com/gofiber/fiber/v2"
+	    rtsp2hls "github.com/kodernubie/rtsp2hls"
+    )
+    
+    app := fiber.New()
+
+    // called by videoplayer : http://server.com/stream/[streamId]/segment/1.ts 
+    app.Get("/stream/:streamId/segment/:segmentId", function(c *fiber.Context) {
+
+        streamId := c.Param("streamId")
+        stream := rtsp2hls.get(streamId)
+
+        c.Response().Header.Add("Content-Type", "video/mp2t")
+
+        segmentId := c.Params("segmentId")
+        segmentId = mediaId[0 : len(segmentId)-3]
+
+        byt, _ := stream.Segment(segmentId)
+
+        c.Response().Header.Add("Content-Type", "video/mp2t")
+        return c.SendStream(bytes.NewReader(byt)) 
+    })
+
+```
+
+
+Please check "example" folder for complete example of RTSP 2 HLS server.
